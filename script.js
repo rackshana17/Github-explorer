@@ -1,220 +1,262 @@
-const searchForm = document.getElementById("search-form");
-const searchInput = document.getElementById("search-input");
+const API = "https://api.github.com/users";
 
-const status = document.getElementById("status");
+const form = document.getElementById("search-form");
+const input = document.getElementById("search-input");
+
+const statusLine = document.getElementById("status");
+
 const profile = document.getElementById("profile");
 
-const repoHeading = document.getElementById("repo-heading");
 const repositories = document.getElementById("repositories");
 
+const repoHeading = document.getElementById("repo-heading");
 
-// ===============================
-// SEARCH GITHUB USER
-// ===============================
 
-searchForm.addEventListener("submit", async function (event) {
+function showSkeletons() {
+  repositories.innerHTML = "";
 
-  event.preventDefault();
+  for (let i = 0; i < 6; i++) {
+    const skeleton = document.createElement("div");
 
-  const username = searchInput.value.trim();
+    skeleton.className = "skeleton";
 
-  if (!username) {
-    showError("Please enter a GitHub username.");
+    repositories.appendChild(skeleton);
+  }
+}
+
+
+async function getUser(username) {
+  const response = await fetch(`${API}/${encodeURIComponent(username)}`);
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("GitHub user not found.");
+    }
+
+    throw new Error(`Request failed (${response.status})`);
+  }
+
+  return response.json();
+}
+
+
+async function getRepositories(username) {
+  const response = await fetch(
+    `${API}/${encodeURIComponent(username)}/repos?sort=updated&per_page=30`,
+  );
+
+  if (!response.ok) {
+    throw new Error(`Could not load repositories (${response.status})`);
+  }
+
+  return response.json();
+}
+
+
+function makeProfile(user) {
+  const card = document.createElement("article");
+  card.className = "profile-card";
+
+  const image = document.createElement("img");
+  image.className = "profile-image";
+  image.src = user.avatar_url;
+  image.alt = `${user.login}'s profile picture`;
+
+  const info = document.createElement("div");
+  info.className = "profile-info";
+
+
+  const name = document.createElement("h2");
+  name.className = "profile-name";
+
+  name.textContent = user.name || user.login;
+
+  const username = document.createElement("p");
+
+  username.className = "profile-username";
+
+  username.textContent = `@${user.login}`;
+
+  const bio = document.createElement("p");
+
+  bio.className = "profile-bio";
+
+  bio.textContent = user.bio || "No bio available.";
+
+  const stats = document.createElement("div");
+
+  stats.className = "profile-stats";
+
+  stats.append(
+    createStat("Repositories", user.public_repos),
+    createStat("Followers", user.followers),
+    createStat("Following", user.following),
+  );
+
+  info.append(name, username, bio, stats);
+
+  card.append(image, info);
+
+  profile.innerHTML = "";
+
+  profile.appendChild(card);
+}
+
+
+function createStat(label, value) {
+  const stat = document.createElement("span");
+
+  stat.className = "stat";
+
+  const strong = document.createElement("strong");
+
+  strong.textContent = value;
+
+  stat.append(strong, ` ${label}`);
+
+  return stat;
+}
+
+function makeRepository(repo) {
+  const card = document.createElement("article");
+
+  card.className = "repo-card";
+
+  const name = document.createElement("h3");
+
+  name.className = "repo-name";
+
+  const link = document.createElement("a");
+
+  link.href = repo.html_url;
+
+  link.target = "_blank";
+
+  link.rel = "noopener";
+
+  link.textContent = repo.name;
+
+  name.appendChild(link);
+
+  const description = document.createElement("p");
+
+  description.className = "repo-description";
+
+  description.textContent = repo.description || "No description available.";
+
+  const meta = document.createElement("div");
+
+  meta.className = "repo-meta";
+
+  const language = document.createElement("span");
+
+  language.textContent = `💻 ${repo.language || "Unknown"}`;
+
+  const stars = document.createElement("span");
+
+  stars.textContent = `⭐ ${repo.stargazers_count}`;
+
+  const forks = document.createElement("span");
+
+  forks.textContent = `🍴 ${repo.forks_count}`;
+
+  meta.append(language, stars, forks);
+
+  card.append(name, description, meta);
+
+  return card;
+}
+
+
+function renderRepositories(repos) {
+  repositories.innerHTML = "";
+
+  if (repos.length === 0) {
+    repoHeading.textContent = "Repositories";
+
+    repositories.textContent = "This user has no public repositories.";
+
     return;
   }
 
-  // Clear previous results
-  profile.innerHTML = "";
-  repositories.innerHTML = "";
-  repoHeading.textContent = "";
+  repoHeading.textContent = `Repositories (${repos.length})`;
 
-  // Loading state
-  status.className = "status";
-  status.textContent = "Searching GitHub...";
+  const fragment = document.createDocumentFragment();
 
-  try {
+  repos.forEach((repo) => {
+    fragment.appendChild(makeRepository(repo));
+  });
 
-    // Get profile
-    const userResponse = await fetch(
-      `https://api.github.com/users/${username}`
-    );
+  repositories.appendChild(fragment);
+}
 
-    if (!userResponse.ok) {
-      throw new Error("GitHub user not found");
-    }
+async function search(username) {
 
-    const user = await userResponse.json();
+  const trimmed = username.trim();
 
+  if (!trimmed) {
+    statusLine.textContent = "Enter a GitHub username.";
 
-    // ===============================
-    // SHOW PROFILE
-    // ===============================
+    statusLine.classList.remove("error");
 
-    profile.innerHTML = `
-      <div class="profile-card">
+    profile.innerHTML = "";
 
-        <img
-          class="profile-image"
-          src="${user.avatar_url}"
-          alt="${user.login} profile picture"
-        >
+    repositories.innerHTML = "";
 
-        <div class="profile-info">
+    repoHeading.textContent = "";
 
-          <h2 class="profile-name">
-            ${user.name || user.login}
-          </h2>
-
-          <p class="profile-username">
-            @${user.login}
-          </p>
-
-          <p class="profile-bio">
-            ${user.bio || "No bio available."}
-          </p>
-
-          <div class="profile-stats">
-
-            <span class="stat">
-              Repositories:
-              <strong>${user.public_repos}</strong>
-            </span>
-
-            <span class="stat">
-              Followers:
-              <strong>${user.followers}</strong>
-            </span>
-
-            <span class="stat">
-              Following:
-              <strong>${user.following}</strong>
-            </span>
-
-          </div>
-
-        </div>
-
-      </div>
-    `;
-
-
-    // ===============================
-    // GET REPOSITORIES
-    // ===============================
-
-    status.textContent = "Loading repositories...";
-
-    const repoResponse = await fetch(
-      `https://api.github.com/users/${username}/repos?sort=updated&per_page=30`
-    );
-
-    if (!repoResponse.ok) {
-      throw new Error("Could not load repositories");
-    }
-
-    const repos = await repoResponse.json();
-
-
-    // ===============================
-    // SHOW REPOSITORIES
-    // ===============================
-
-    repoHeading.textContent =
-      `Repositories (${repos.length})`;
-
-    if (repos.length === 0) {
-
-      repositories.innerHTML = `
-        <p class="status">
-          This user has no public repositories.
-        </p>
-      `;
-
-    } else {
-
-      repositories.innerHTML = "";
-
-      repos.forEach(function (repo) {
-
-        const card = document.createElement("article");
-
-        card.className = "repo-card";
-
-        card.innerHTML = `
-          
-          <h3 class="repo-name">
-
-            <a
-              href="${repo.html_url}"
-              target="_blank"
-              rel="noopener"
-            >
-              ${repo.name}
-            </a>
-
-          </h3>
-
-
-          <p class="repo-description">
-            ${
-              repo.description ||
-              "No description available."
-            }
-          </p>
-
-
-          <div class="repo-meta">
-
-            <span>
-              ⭐ ${repo.stargazers_count}
-            </span>
-
-            <span>
-              🍴 ${repo.forks_count}
-            </span>
-
-            <span>
-              💻 ${repo.language || "Not specified"}
-            </span>
-
-          </div>
-
-        `;
-
-        repositories.appendChild(card);
-
-      });
-
-    }
-
-
-    // Done
-    status.textContent = "";
-
-  } catch (error) {
-
-    console.error(error);
-
-    showError(
-      "GitHub user not found. Please check the username."
-    );
-
+    return;
   }
 
+  statusLine.textContent = `Searching for @${trimmed}...`;
+
+  statusLine.classList.remove("error");
+
+  profile.innerHTML = "";
+
+  repoHeading.textContent = "";
+
+  showSkeletons();
+
+  try {
+    // Fetch both at the same time
+    const [user, repos] = await Promise.all([
+      getUser(trimmed),
+      getRepositories(trimmed),
+    ]);
+
+    makeProfile(user);
+
+    renderRepositories(repos);
+
+    statusLine.textContent = `Showing GitHub profile for @${user.login}.`;
+  } catch (error) {
+    statusLine.textContent = error.message || "Something went wrong.";
+
+    statusLine.classList.add("error");
+
+    profile.innerHTML = "";
+
+    repositories.innerHTML = "";
+
+    repoHeading.textContent = "";
+
+    console.error(error);
+  }
+}
+
+
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  search(input.value);
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+  input.value = "sagar-kumar3099";
+
+  search("sagar-kumar3099");
 });
 
 
-// ===============================
-// ERROR FUNCTION
-// ===============================
-
-function showError(message) {
-
-  status.textContent = message;
-  status.className = "status error";
-
-  profile.innerHTML = "";
-  repositories.innerHTML = "";
-  repoHeading.textContent = "";
-
-}
